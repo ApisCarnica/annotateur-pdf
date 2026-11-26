@@ -48,6 +48,11 @@ main{flex:1;overflow:auto;position:relative}
 #drop h1{font-size:30px;line-height:1.1;margin:14px 0 8px;font-weight:600;text-wrap:balance}
 #drop p{color:var(--mute);margin:0 0 22px}
 #drop svg{width:64px;height:64px;stroke:var(--acc);stroke-width:1.4;fill:none}
+#cfgbox{position:fixed;inset:0;background:rgba(0,0,0,.4);display:grid;place-items:center;z-index:20;padding:16px}
+.cfgin{background:var(--bar);border-radius:14px;padding:22px;width:min(420px,100%);box-shadow:0 10px 40px rgba(0,0,0,.3);display:grid;gap:14px}
+.cfgin h2{margin:0;font-size:20px}.cfgin label{display:grid;gap:6px;font-size:14px}.cfgin p{margin:0}
+.cfgin select{font:inherit;font-size:16px;height:40px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 8px}
+.cfgin input[type=range]{width:100%}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:10;max-width:90vw}
 #toast.on{opacity:1}
 .hide{display:none!important}
@@ -95,6 +100,7 @@ main{flex:1;overflow:auto;position:relative}
   <div class="grp">
     <button id="penonly" class="tog" aria-pressed="false" title="Seul le stylet dessine ; le doigt fait défiler (anti-paume)">Stylet seul</button>
     <button id="pressure" class="tog" aria-pressed="true" title="Épaisseur variable selon la pression du stylet">Pression</button>
+    <button id="gear" title="Réglages du stylet"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
   </div>
 </header>
 <main id="viewer">
@@ -109,6 +115,19 @@ main{flex:1;overflow:auto;position:relative}
   </div>
 </main>
 <div id="toast" role="status"></div>
+<div id="cfgbox" class="hide" role="dialog" aria-label="Réglages du stylet">
+  <div class="cfgin">
+    <h2>Réglages du stylet</h2>
+    <label>Bouton latéral du stylet (appuyé en écrivant)
+      <select id="cfgBarrel"><option value="eraser">Gomme</option><option value="hl">Surligneur</option><option value="hand">Main (défiler)</option><option value="pen">Stylo</option><option value="none">Aucune action</option></select></label>
+    <label>Extrémité gomme du stylet (stylet retourné)
+      <select id="cfgTail"><option value="eraser">Gomme</option><option value="hl">Surligneur</option><option value="hand">Main (défiler)</option><option value="none">Aucune action</option></select></label>
+    <label>Rayon de la gomme du stylet : <span id="cfgRv"></span> pt
+      <input id="cfgRadius" type="range" min="2" max="40" value="10"></label>
+    <p class="lbl">Raccourci clavier : Ctrl+E active la gomme ; un second Ctrl+E revient à l'outil précédent.</p>
+    <div style="text-align:right"><button id="cfgOk" class="primary">Fermer</button></div>
+  </div>
+</div>
 
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
@@ -121,6 +140,9 @@ const HL_ALPHA=0.35;
 let pdf=null,origBytes=null,fileName='document.pdf',filePath=null,pages=[],scale=1,dirty=false;
 let tool='pen',color='#1d2bd8',size=3,penOnly=false,pressureOn=true;
 const undoS=[],redoS=[];
+const cfg={barrel:'eraser',tail:'eraser',radius:10};
+try{Object.assign(cfg,JSON.parse(localStorage.getItem('annot-cfg')||'{}'))}catch(e){}
+const saveCfg=()=>{try{localStorage.setItem('annot-cfg',JSON.stringify(cfg))}catch(e){}};
 const setDirty=v=>{dirty=v;desk?.setDirty(v)};
 async function openDialog(){if(desk){const f=await desk.openDialog();if(f)openFile(f)}else $('#file').click()}
 
@@ -146,6 +168,14 @@ $('#size').addEventListener('input',e=>setSize(e.target.value));
 const tog=(id,fn)=>$(id).addEventListener('click',e=>{const b=e.currentTarget,v=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',v);fn(v)});
 tog('#penonly',v=>{penOnly=v;toast(v?'Stylet seul : le doigt fait défiler la page':'Doigt, souris et stylet dessinent')});
 tog('#pressure',v=>{pressureOn=v});
+const cb=$('#cfgbox'),showCfg=()=>{$('#cfgBarrel').value=cfg.barrel;$('#cfgTail').value=cfg.tail;$('#cfgRadius').value=cfg.radius;$('#cfgRv').textContent=cfg.radius;cb.classList.remove('hide');$('#cfgBarrel').focus()};
+$('#gear').onclick=showCfg;
+$('#cfgBarrel').onchange=e=>{cfg.barrel=e.target.value;saveCfg()};
+$('#cfgTail').onchange=e=>{cfg.tail=e.target.value;saveCfg()};
+$('#cfgRadius').oninput=e=>{cfg.radius=+e.target.value;$('#cfgRv').textContent=cfg.radius;saveCfg()};
+$('#cfgOk').onclick=()=>cb.classList.add('hide');
+cb.addEventListener('click',e=>{if(e.target===cb)cb.classList.add('hide')});
+cb.addEventListener('keydown',e=>{if(e.key==='Escape')cb.classList.add('hide')});
 
 /* ---------- ouverture ---------- */
 async function openFile(f){
@@ -259,21 +289,29 @@ $('#clear').onclick=async()=>{const P=curPage();if(!P||!P.anns.length)return toa
 function bindPage(P){
   const ov=P.ov;let cur=null,pan=null,erased=null;
   const pt=e=>{const b=ov.getBoundingClientRect();return[(e.clientX-b.left)/scale,(e.clientY-b.top)/scale,e.pointerType==='pen'?(e.pressure||0.5):0.5]};
+  let er=0;const coal=e=>{const c=e.getCoalescedEvents?.();return c&&c.length?c:[e]};const cap=e=>{try{ov.setPointerCapture(e.pointerId)}catch(x){}};
+  ov.addEventListener('contextmenu',e=>e.preventDefault());
   ov.addEventListener('pointerdown',e=>{
-    if(e.button>0)return;
-    if(tool==='hand'&&e.pointerType==='touch')return;
-    if(tool==='hand'||(penOnly&&e.pointerType==='touch')){pan={x:e.clientX,y:e.clientY,t:viewer.scrollTop,l:viewer.scrollLeft};ov.setPointerCapture(e.pointerId);return}
-    e.preventDefault();ov.setPointerCapture(e.pointerId);const p=pt(e);
-    if(tool==='text'){openText(P,p[0],p[1]);return}
-    if(tool==='eraser'){erased=P.anns.slice();eraseAt(P,p);return}
-    if(tool==='pen'||tool==='hl')cur={type:tool,color,w:size,press:tool==='pen'&&pressureOn&&e.pointerType==='pen',pts:[p]};
-    else cur={type:tool,color,w:size,p0:p.slice(0,2),p1:p.slice(0,2)};
+    const pen=e.pointerType==='pen';
+    let t=tool,ov2=null;
+    if(pen&&(e.button===5||(e.buttons&32)))ov2=cfg.tail;
+    else if(pen&&(e.button===2||(e.buttons&2)))ov2=cfg.barrel;
+    if(ov2==='none')return;
+    if(ov2)t=ov2;else if(e.button>0)return;
+    if(t==='hand'&&e.pointerType==='touch')return;
+    if(t==='hand'||(penOnly&&e.pointerType==='touch')){pan={x:e.clientX,y:e.clientY,t:viewer.scrollTop,l:viewer.scrollLeft};cap(e);return}
+    e.preventDefault();cap(e);const p=pt(e);
+    if(t==='text'){openText(P,p[0],p[1]);return}
+    if(t==='eraser'){er=ov2?cfg.radius:Math.max(4,size*1.5);erased=P.anns.slice();P.lastE=p;eraseAt(P,p,er);return}
+    const w=ov2?(t==='hl'?12:3):size;
+    if(t==='pen'||t==='hl')cur={type:t,color,w,press:t==='pen'&&pressureOn&&pen,pts:[p]};
+    else cur={type:t,color,w,p0:p.slice(0,2),p1:p.slice(0,2)};
   });
   ov.addEventListener('pointermove',e=>{
     if(pan){viewer.scrollTop=pan.t-(e.clientY-pan.y);viewer.scrollLeft=pan.l-(e.clientX-pan.x);return}
-    if(erased){(e.getCoalescedEvents?.()||[e]).forEach(ev=>eraseAt(P,pt(ev)));return}
+    if(erased){coal(e).forEach(ev=>{const q=pt(ev),l=P.lastE||q,d=Math.hypot(q[0]-l[0],q[1]-l[1]),n=Math.ceil(d/(er/2))||1;for(let k=1;k<=n;k++)eraseAt(P,[l[0]+(q[0]-l[0])*k/n,l[1]+(q[1]-l[1])*k/n],er);P.lastE=q});return}
     if(!cur)return;
-    if(cur.pts)(e.getCoalescedEvents?.()||[e]).forEach(ev=>{const p=pt(ev),l=cur.pts[cur.pts.length-1];if(Math.hypot(p[0]-l[0],p[1]-l[1])>0.4/scale)cur.pts.push(p)});
+    if(cur.pts)coal(e).forEach(ev=>{const p=pt(ev),l=cur.pts[cur.pts.length-1];if(Math.hypot(p[0]-l[0],p[1]-l[1])>0.4/scale)cur.pts.push(p)});
     else{let p=pt(e).slice(0,2);if(e.shiftKey&&(cur.type==='rect'||cur.type==='ellipse')){const d=Math.max(Math.abs(p[0]-cur.p0[0]),Math.abs(p[1]-cur.p0[1]));p=[cur.p0[0]+Math.sign(p[0]-cur.p0[0])*d,cur.p0[1]+Math.sign(p[1]-cur.p0[1])*d]}cur.p1=p}
     cancelAnimationFrame(P.raf);P.raf=requestAnimationFrame(()=>drawAnns(P,cur));
   });
@@ -288,8 +326,8 @@ function bindPage(P){
   };
   ov.addEventListener('pointerup',end);ov.addEventListener('pointercancel',end);
 }
-function eraseAt(P,p){
-  const r=Math.max(4,size*1.5),n=P.anns.length;
+function eraseAt(P,p,r){
+  const n=P.anns.length;
   P.anns=P.anns.filter(a=>!hit(a,p[0],p[1],r));if(P.anns.length!==n)drawAnns(P);
 }
 
@@ -347,12 +385,14 @@ function confirmBox(msg){return new Promise(res=>{
 })}
 
 /* ---------- clavier ---------- */
+let prevTool='pen';
 const keys={v:'hand',p:'pen',h:'hl',e:'eraser',t:'text',l:'line',a:'arrow',r:'rect',o:'ellipse'};
 document.addEventListener('keydown',e=>{
-  if(e.target.matches('input,textarea'))return;const k=e.key.toLowerCase(),m=e.ctrlKey||e.metaKey;
+  if(e.target.matches('input,textarea,select'))return;const k=e.key.toLowerCase(),m=e.ctrlKey||e.metaKey;
   if(m&&k==='z'){e.preventDefault();e.shiftKey?redo():undo()}
   else if(m&&k==='y'){e.preventDefault();redo()}
   else if(m&&k==='s'){e.preventDefault();save()}
+  else if(m&&k==='e'){e.preventDefault();if(tool==='eraser')setTool(prevTool);else{prevTool=tool;setTool('eraser')}}
   else if(m&&(k==='+'||k==='=')){e.preventDefault();setScale(scale*1.2)}
   else if(m&&k==='-'){e.preventDefault();setScale(scale/1.2)}
   else if(!m&&keys[k])setTool(keys[k]);
@@ -360,7 +400,7 @@ document.addEventListener('keydown',e=>{
 if(!window.PDFLib)toast('Bibliothèque PDF introuvable : réinstallez l\'application.',8000);
 if(desk){
   desk.onOpen(f=>openFile(f));
-  desk.onMenu(a=>({open:openDialog,save,undo,redo,zin:()=>setScale(scale*1.2),zout:()=>setScale(scale/1.2),zfit:()=>$('#zfit').click()}[a]?.()));
+  desk.onMenu(a=>({open:openDialog,save,undo,redo,zin:()=>setScale(scale*1.2),zout:()=>setScale(scale/1.2),zfit:()=>$('#zfit').click(),cfg:showCfg}[a]?.()));
   desk.ready();
 }else window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
 }
