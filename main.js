@@ -70,7 +70,9 @@ function buildMenu() {
     ]},
     { label: 'Édition', submenu: [
       { label: 'Annuler   Ctrl+Z', click: send('undo') },
-      { label: 'Rétablir   Ctrl+Y', click: send('redo') }
+      { label: 'Rétablir   Ctrl+Y', click: send('redo') },
+      { type: 'separator' },
+      { label: 'Réglages du stylet…', click: send('cfg') }
     ]},
     { label: 'Affichage', submenu: [
       { label: 'Zoom avant', click: send('zin') },

@@ -13,7 +13,9 @@ Logiciel Windows pour annoter un PDF au stylet et l'enregistrer.
 - Ouverture d'un PDF par double-clic ou par « Ouvrir avec » depuis l'Explorateur
 - Mises à jour automatiques
 
-Raccourcis : P stylo, H surligneur, E gomme, T texte, L ligne, A flèche, R rectangle, O ellipse, V main ; Ctrl+O, Ctrl+S, Ctrl+Z, Ctrl+Y.
+Réglages du stylet (bouton ⚙ ou menu Édition) : action du bouton latéral et de l'extrémité gomme (gomme par défaut), rayon de cette gomme.
+
+Raccourcis : Ctrl+E gomme (un second Ctrl+E revient à l'outil précédent), P stylo, H surligneur, E gomme, T texte, L ligne, A flèche, R rectangle, O ellipse, V main ; Ctrl+O, Ctrl+S, Ctrl+Z, Ctrl+Y.
 
 ## Obtenir l'installateur .exe (une seule fois)
 
